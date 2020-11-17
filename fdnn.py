@@ -26,11 +26,18 @@ def random_hadamard_filter_initializer(dims, device=CUDA_DEVICE):
         0.01 * torch.randn(dims, device=device),
         0.01 * torch.randn(dims, device=device))
 
+
+def naive_bias_initializer(dims, device=CUDA_DEVICE):
+    return torch.cat((torch.ones(dims), torch.ones(dims)))
+
+
 class ComplexLinear(torch.nn.Module):
 
 
     def __init__(
-        self, in_features, out_features, initializer=torch.randn, layer_ind=0,
+        self, in_features, out_features,
+        initializer=random_complex_weight_initializer, 
+        layer_ind=0,
         bias_initializer=None, device=CUDA_DEVICE):
 
         super().__init__()
@@ -66,7 +73,8 @@ class GenericLinear(ComplexLinear):
 
     def __init__(
         self, num_dims, mixed_dim, in_features, out_features, layer_ind=0,
-        initializer=torch.randn, bias_initializer=None, device=CUDA_DEVICE):
+        initializer=random_complex_weight_initializer, bias_initializer=None,
+        device=CUDA_DEVICE):
 
         super().__init__(
             in_features, out_features, layer_ind=layer_ind, 
@@ -102,7 +110,8 @@ class Hadamard(torch.nn.Module):
 
 
     def __init__(
-        self, dims, layer_ind=0, initializer=torch.randn, mask_initializer=torch.ones,
+        self, dims, layer_ind=0, initializer=random_complex_weight_initializer,
+        mask_initializer=torch.ones,
         device=CUDA_DEVICE):
 
         super().__init__()
@@ -148,8 +157,9 @@ class FrequencyFilteringBlock():
 
     def __init__(
         self, dims, num_layers, num_filters, non_lin=torch.nn.Tanh,
-        preserved_dim=None, initializer=torch.randn, 
-        hadamard_initializer=torch.randn, bias_initializer=None,
+        preserved_dim=None, initializer=random_complex_weight_initializer, 
+        hadamard_initializer=random_hadamard_filter_initializer,
+        bias_initializer=None,
         device=CUDA_DEVICE):
 
         self.dims = dims
@@ -167,11 +177,6 @@ class FrequencyFilteringBlock():
 
         self.non_linearity = non_lin
         self.layers = self.compile_layers()
-
-
-    # @staticmethod
-    # def forward(self, x):
-    #     return self.sequential.foward(x)
 
 
     def compile_layers(self):
