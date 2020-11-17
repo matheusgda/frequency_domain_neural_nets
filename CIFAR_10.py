@@ -32,19 +32,13 @@ loader_train = DataLoader(cifar10_train, batch_size=64,
                           sampler=sampler.SubsetRandomSampler(range(NUM_TRAIN)))
 
 
-def initializer(x, d):
-    A = 0.01 * torch.randn(x, device=d)
-    B = 0.01 * torch.randn(x, device=d)
-    return (A, B)
-
-def hadamard_initializer(x, d):
-    return (0.01 * torch.randn(x, device=d), 0.01 * torch.randn(x, device=d))
 
 dims = (N, H, W, C, 1)
 num_layers = 1
 num_filters = (1, 4, 5, 6)
 preserved_dim = 3
-
+initializer = fdnn.random_complex_weight_initializer
+hadamard_initializer = fdnn.random_hadamard_filter_initializer
 bias_initializer = None
 
 module = fdnn.FrequencyFilteringBlock(

@@ -14,6 +14,18 @@ import numpy as np
 # CUDA_DEVICE = torch.device("cuda:0")
 CUDA_DEVICE = torch.device('cpu')
 
+
+def random_complex_weight_initializer(dims, device=CUDA_DEVICE):
+    A = 0.01 * torch.randn(dims, device=device)
+    B = 0.01 * torch.randn(dims, device=device)
+    return (A, B)
+
+
+def random_hadamard_filter_initializer(dims, device=CUDA_DEVICE):
+    return (
+        0.01 * torch.randn(dims, device=device),
+        0.01 * torch.randn(dims, device=device))
+
 class ComplexLinear(torch.nn.Module):
 
 
