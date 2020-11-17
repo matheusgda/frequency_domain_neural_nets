@@ -47,7 +47,6 @@ class ComplexBatchNorm(torch.nn.Module):
         else:
             self.batchnorm = torch.nn.BatchNorm2d(batch_dim)
         self.batchnorm.cuda(device)
-        print(self.permutation)
 
 
     def forward(self, x):
@@ -56,8 +55,6 @@ class ComplexBatchNorm(torch.nn.Module):
         return torch.cat((
             self.batchnorm(y[:rind]), self.batchnorm(y[rind:]))).permute(
                 self.permutation)
-
-
 
 
 class ComplexLinear(torch.nn.Module):
@@ -186,7 +183,7 @@ class FrequencyFilteringBlock(torch.nn.Module):
 
 
     def __init__(
-        self, dims, num_layers, num_filters, non_lin=torch.nn.Hardtanh,
+        self, dims, num_filters, non_lin=torch.nn.Hardtanh,
         preserved_dim=None, initializer=random_complex_weight_initializer, 
         hadamard_initializer=random_hadamard_filter_initializer,
         bias_initializer=naive_bias_initializer,
@@ -195,7 +192,7 @@ class FrequencyFilteringBlock(torch.nn.Module):
         super().__init__()
         self.dims = dims
         self.num_dims = len(dims)
-        self.num_layers = num_layers
+        self.num_layers = int(len(num_filters) - 1)
         self.num_filters = num_filters
         self.initializer = initializer
         self.hadamard_initializer = hadamard_initializer
@@ -206,7 +203,7 @@ class FrequencyFilteringBlock(torch.nn.Module):
         self.is_preserving = preserved_dim is not None
         if self.is_preserving:
             self.preserved_size = dims[preserved_dim]
-        self.batch_dim_index = int (4 - self.is_preserving)
+        self.batch_dim_index = 3 # TODO: clarify why
 
         self.non_linearity = non_lin
         self.layers = self.compile_layers()
@@ -263,6 +260,10 @@ class FrequencyFilteringBlock(torch.nn.Module):
 
     def num_output_features(self):
         return np.prod(self.dims[1 :-1]) * self.num_filters[-1]
+    
+
+    def output_shape(self):
+        return tuple(*self.dims[1:-1], self.num_filters[-1])
 
 
 class ComplexClassificationHead(torch.nn.Module):
@@ -283,6 +284,64 @@ class ComplexClassificationHead(torch.nn.Module):
 
     def forward(self, x):
         return self.sequential(x)
+
+
+class FrequencyDomainNeuralNet(torch.nn.Module):
+
+    def __init__(self, pdims, p_num_filters, m_num_filters, num_classes,
+        p_non_lin=torch.nn.Hardtanh, m_non_lin=torch.nn.Hardtanh,
+        preserved_dim=3, p_initializer=random_complex_weight_initializer,
+        m_initializer=random_complex_weight_initializer, 
+        p_hadamard_initializer=random_hadamard_filter_initializer,
+        m_hadamard_initializer=random_hadamard_filter_initializer,
+        p_bias_initializer=naive_bias_initializer,
+        m_bias_initializer=naive_bias_initializer,
+        collapse_initializer=random_complex_weight_initializer,
+        device=CUDA_DEVICE):
+
+        super().__init__()
+        self.num_dims = len(pdims)
+
+        self.preserving_block = FrequencyFilteringBlock(
+                    pdims, p_num_filters, non_lin=p_non_lin,
+                    preserved_dim=preserved_dim, 
+                    initializer=p_initializer, 
+                    hadamard_initializer=p_hadamard_initializer,
+                    bias_initializer=p_bias_initializer,
+                    device=device)
+
+        self.mdims = (*pdims[:-2], p_num_filters[-1])
+        self.device = device
+
+        preserved_size = pdims[preserved_dim]
+
+        self.collapse = GenericLinear(
+                        len(pdims), preserved_dim, preserved_size,
+                        1, layer_ind=-1,
+                        initializer=collapse_initializer,
+                        bias_initializer=p_bias_initializer,
+                        device=device)
+
+        self.collapse_view_dims = (2 * self.mdims[0], *self.mdims[1:])
+
+        self.mixing_block = FrequencyFilteringBlock(
+                    self.mdims, 
+                    (p_num_filters[-1],  *m_num_filters),
+                    non_lin=m_non_lin,
+                    preserved_dim=None, 
+                    initializer=m_initializer, 
+                    hadamard_initializer=m_hadamard_initializer,
+                    bias_initializer=m_bias_initializer,
+                    device=device)
+
+        self.head = ComplexClassificationHead(
+            self.mixing_block.num_output_features(), num_classes, device=device)
+
+
+    def forward(self, x):
+        y0 = self.preserving_block(x)
+        y1 = self.collapse(y0).view(self.collapse_view_dims)
+        return self.head(self.mixing_block(y1))
 
 
 # class ConvFilteringBlock(torch.nn.Module):

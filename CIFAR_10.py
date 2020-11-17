@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-NUM_TRAIN = 128
+NUM_TRAIN = 30000
+NUM_VAL = 200
 
 import torch
 import torchvision
@@ -14,9 +15,8 @@ import fdnn
 import matplotlib.pyplot as plt
 import gradflow
 
-dtype = torch.cfloat
 device = torch.device("cuda:0")
-# device = torch.device('cpu')
+dtype = torch.cfloat
 
 N, C, H, W, K = 64, 3, 32, 32, 10
 
@@ -38,48 +38,53 @@ loader_train = DataLoader(cifar10_train, batch_size=64,
                           sampler=sampler.SubsetRandomSampler(range(NUM_TRAIN)))
 
 loader_val = DataLoader(cifar10_validation, batch_size=64, 
-                          sampler=sampler.SubsetRandomSampler(
-                              range(NUM_TRAIN, NUM_TRAIN + NUM_TRAIN)))
+                          sampler=sampler.SubsetRandomSampler(range(NUM_VAL)))
+
+
+# dims = (N, H, W, C, 1)
+# num_filters = (1, 4, 5, 6)
+# preserved_dim = 3
+# initializer = fdnn.random_complex_weight_initializer
+# hadamard_initializer = fdnn.random_hadamard_filter_initializer
+# bias_initializer = fdnn.naive_bias_initializer
+
+# pfilter = fdnn.FrequencyFilteringBlock(
+#     dims, num_filters, preserved_dim=3,
+#     initializer=initializer, hadamard_initializer=hadamard_initializer,
+#     bias_initializer=bias_initializer, device=device)
+
+# head = fdnn.ComplexClassificationHead(
+#     pfilter.num_output_features(), K, device=device)
+
+# model = torch.nn.Sequential(pfilter, head)
 
 
 dims = (N, H, W, C, 1)
-num_layers = 3
-num_filters = (1, 4, 5, 6)
+p_num_filters = (1, 4, 5, 6)
+m_num_filters = (4, 5, 6)
 preserved_dim = 3
 initializer = fdnn.random_complex_weight_initializer
 hadamard_initializer = fdnn.random_hadamard_filter_initializer
 bias_initializer = fdnn.naive_bias_initializer
-output_features = H * W * C * num_filters[-1]
 
-pfilter = fdnn.FrequencyFilteringBlock(
-    dims, num_layers, num_filters, preserved_dim=3,
-    initializer=initializer, hadamard_initializer=hadamard_initializer,
-    bias_initializer=bias_initializer, device=device)
-
-head = fdnn.ComplexClassificationHead(
-    pfilter.num_output_features(), K, device=device)
-
-# layers = module.layers
-# layers.append(torch.nn.Flatten())
-# layers.append(fdnn.ComplexLinear(output_features, K))
-# layers.append(fdnn.Absolute())
-model = torch.nn.Sequential(pfilter, head)
-
-for name, param in model.named_parameters():
-    print(name, param.requires_grad)
-
+model = fdnn.FrequencyDomainNeuralNet(
+    dims, p_num_filters, m_num_filters, K, preserved_dim=3,
+    p_initializer=initializer, p_hadamard_initializer=hadamard_initializer,
+    p_bias_initializer=bias_initializer,
+    m_initializer=initializer, m_hadamard_initializer=hadamard_initializer,
+    m_bias_initializer=bias_initializer,
+    device=device)
 
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9,0.99))
 
-num_epochs = 50
+num_epochs = 500
 losses = list()
 accuracy = list()
 epochs = list()
 
 plot = True
 for e in range(num_epochs):
-    print("Epoch {}:".format(e))
     best_loss = 10
 
     for t, (x, y) in enumerate(loader_train):
@@ -106,7 +111,10 @@ for e in range(num_epochs):
         #     gradflow.plot_grad_flow(model.named_parameters())
         plot = False
         optimizer.step()
-    print("Best loss {}.".format(best_loss))
+
+    if e % 100 == 0:
+        print("Best loss {}.".format(best_loss))
+        print("Epoch: {} / {}".format(e, num_epochs))
 
     losses.append(best_loss)
 
@@ -116,13 +124,15 @@ for e in range(num_epochs):
         x = x.view(N, H, W, C, 1).to(device=device, dtype=dtype)
         x = fft.fftn(x, dim=(-1, -2))
         real_x = torch.cat((x.real, x.imag))
+        scores = model(real_x)
 
         y = y.to(device=device, dtype=torch.long)
-        print(y)
-        y_pred = model(real_x)
-        val = (1.0 * (y_pred[y] > 0.5)).mean()
+
+        val = (1.0 * (torch.argmax(scores, 1) == y)).mean()
         accuracy.append(val.item())
-        print(val.item())
+        # print("Batch {0} accuracy: {1}".format(t, val.item()))
+
+torch.save(model.state_dict(), "FDNN_CIFAR10.model")
 
 plt.plot(list(range(num_epochs)), losses)
 plt.ylabel("Loss")
