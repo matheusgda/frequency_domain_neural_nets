@@ -11,24 +11,53 @@ fundamental building blocks for this architecture are:
 import torch
 import numpy as np
 
-# CUDA_DEVICE = torch.device("cuda:0")
-CUDA_DEVICE = torch.device('cpu')
+CUDA_DEVICE = torch.device("cuda:0")
+# CUDA_DEVICE = torch.device('cpu')
 
 
 def random_complex_weight_initializer(dims, device=CUDA_DEVICE):
-    A = 0.01 * torch.randn(dims, device=device)
-    B = 0.01 * torch.randn(dims, device=device)
+    A = 0.01 * torch.randn(dims, device=device, requires_grad=True)
+    B = 0.01 * torch.randn(dims, device=device, requires_grad=True)
     return (A, B)
 
 
 def random_hadamard_filter_initializer(dims, device=CUDA_DEVICE):
     return (
-        0.01 * torch.randn(dims, device=device),
-        0.01 * torch.randn(dims, device=device))
+        1 * torch.randn(dims, device=device, requires_grad=True),
+        1 * torch.randn(dims, device=device, requires_grad=True))
 
 
 def naive_bias_initializer(dims, device=CUDA_DEVICE):
-    return torch.cat((torch.ones(dims), torch.ones(dims)))
+    return (torch.zeros(dims, device=device, requires_grad=True),
+            torch.zeros(dims, device=device, requires_grad=True))
+
+
+class ComplexBatchNorm(torch.nn.Module):
+
+
+    def __init__(self, num_dims, batch_dim, batch_dim_ind, device=CUDA_DEVICE):
+        super().__init__()
+        permutation = list(range(num_dims))
+        permutation[1] = batch_dim_ind
+        permutation[batch_dim_ind] = 1
+        self.permutation = tuple(permutation)
+
+        if num_dims == 5:
+            self.batchnorm = torch.nn.BatchNorm3d(batch_dim)
+        else:
+            self.batchnorm = torch.nn.BatchNorm2d(batch_dim)
+        self.batchnorm.cuda(device)
+        print(self.permutation)
+
+
+    def forward(self, x):
+        rind = int(x.shape[0] / 2)
+        y = x.permute(self.permutation)
+        return torch.cat((
+            self.batchnorm(y[:rind]), self.batchnorm(y[rind:]))).permute(
+                self.permutation)
+
+
 
 
 class ComplexLinear(torch.nn.Module):
@@ -38,33 +67,33 @@ class ComplexLinear(torch.nn.Module):
         self, in_features, out_features,
         initializer=random_complex_weight_initializer, 
         layer_ind=0,
-        bias_initializer=None, device=CUDA_DEVICE):
+        bias_initializer=naive_bias_initializer, device=CUDA_DEVICE):
 
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
 
-        self.Wr, self.Wi = torch.nn.Parameter(
-            initializer((out_features, in_features), device))
+        Wr, Wi = initializer((out_features, in_features), device)
+        self.Wr = torch.nn.Parameter(Wr)
+        self.Wi = torch.nn.Parameter(Wi)
         self.register_parameter('Wr{}'.format(layer_ind), self.Wr)
         self.register_parameter('Wi{}'.format(layer_ind), self.Wi)
 
-        self.Br = None
-        self.Bi = None
-
+        Br, Bi = bias_initializer(out_features, device)
+        self.Br = torch.nn.Parameter(Br)
+        self.Bi = torch.nn.Parameter(Bi)
         if bias_initializer is not None:
-            self.Br, self.Bi = bias_initializer()
             self.register_parameter('Br{}'.format(layer_ind), self.Br)
             self.register_parameter('Bi{}'.format(layer_ind), self.Bi)
 
 
     # @staticmethod
     def forward(self, x):
-        real_ind = int(x.shape[0] / 2)
-        rr = torch.nn.functional.linear(x[:real_ind], self.Wr)
-        ri = torch.nn.functional.linear(x[:real_ind], self.Wi)
-        ir = torch.nn.functional.linear(x[real_ind:], self.Wr)
-        ii = torch.nn.functional.linear(x[real_ind:], self.Wi)
+        rind = int(x.shape[0] / 2)
+        rr = torch.nn.functional.linear(x[:rind], self.Wr)
+        ri = torch.nn.functional.linear(x[:rind], self.Wi)
+        ir = torch.nn.functional.linear(x[rind:], self.Wr)
+        ii = torch.nn.functional.linear(x[rind:], self.Wi)
 
         return torch.cat((rr - ii + self.Br, ir + ri + self.Bi))
 
@@ -73,7 +102,8 @@ class GenericLinear(ComplexLinear):
 
     def __init__(
         self, num_dims, mixed_dim, in_features, out_features, layer_ind=0,
-        initializer=random_complex_weight_initializer, bias_initializer=None,
+        initializer=random_complex_weight_initializer,
+        bias_initializer=naive_bias_initializer,
         device=CUDA_DEVICE):
 
         super().__init__(
@@ -86,9 +116,10 @@ class GenericLinear(ComplexLinear):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.permutation = torch.arange(num_dims)
-        self.permutation[mixed_dim] = num_dims - 1
-        self.permutation[-1] = mixed_dim
+        permutation = list(range(num_dims))
+        permutation[mixed_dim] = num_dims - 1
+        permutation[-1] = mixed_dim
+        self.permutation = tuple(permutation)
 
 
     # @staticmethod
@@ -102,7 +133,7 @@ class GenericLinear(ComplexLinear):
         Returns:
             Tensor: Linear output with self.mixed_dim modified.
         """
-        y = super().foward(x.permute(self.permutation))
+        y = super().forward(x.permute(self.permutation))
         return y.permute(self.permutation)
 
 
@@ -119,25 +150,23 @@ class Hadamard(torch.nn.Module):
         self.initializer = initializer
         self.device = device
         self.layer_ind = layer_ind
+        print(self.dims)
 
         freal, fimag = initializer(dims, self.device)
         self.freal = torch.nn.Parameter(freal)
         self.fimag = torch.nn.Parameter(fimag)
-
         self.register_parameter('freal{}'.format(layer_ind), self.freal)
         self.register_parameter('fimag{}'.format(layer_ind), self.fimag)
 
-        # self.requires_grad_(self.filter)
         self.mask = torch.ones(dims, dtype=torch.cfloat, device=device) 
 
 
     # @staticmethod
     def forward(self, x):
-        r = torch.zeros_like(x, device=self.device)
-        l = int(x.shape[0] / 2)
-        r[:l] = self.freal * x[:l] - self.fimag * x[l: ]
-        r[l:] = self.fimag * x[l:] + self.freal * x[:l]
-        return r
+        rind = int(x.shape[0] / 2)
+        return torch.cat((
+            self.freal * x[:rind] - self.fimag * x[rind:],
+            self.fimag * x[rind:] + self.freal * x[:rind]))
 
 
 class Absolute(torch.nn.Module):
@@ -149,19 +178,21 @@ class Absolute(torch.nn.Module):
 
     # @staticmethod
     def forward(self, x):
-        return x.abs()
+        rind = int(x.shape[0] / 2)
+        return (x[:rind] * x[:rind] + x[rind:] * x[rind:]).sqrt()
 
 
-class FrequencyFilteringBlock():
+class FrequencyFilteringBlock(torch.nn.Module):
 
 
     def __init__(
-        self, dims, num_layers, num_filters, non_lin=torch.nn.Tanh,
+        self, dims, num_layers, num_filters, non_lin=torch.nn.Hardtanh,
         preserved_dim=None, initializer=random_complex_weight_initializer, 
         hadamard_initializer=random_hadamard_filter_initializer,
-        bias_initializer=None,
+        bias_initializer=naive_bias_initializer,
         device=CUDA_DEVICE):
 
+        super().__init__()
         self.dims = dims
         self.num_dims = len(dims)
         self.num_layers = num_layers
@@ -172,11 +203,18 @@ class FrequencyFilteringBlock():
         self.device = device
 
         self.preserved_dim = preserved_dim
-        if preserved_dim is not None:
+        self.is_preserving = preserved_dim is not None
+        if self.is_preserving:
             self.preserved_size = dims[preserved_dim]
+        self.batch_dim_index = int (4 - self.is_preserving)
 
         self.non_linearity = non_lin
         self.layers = self.compile_layers()
+        self.sequential = torch.nn.Sequential(*self.layers)
+
+
+    def forward(self, x):
+        return self.sequential(x)
 
 
     def compile_layers(self):
@@ -184,27 +222,67 @@ class FrequencyFilteringBlock():
 
         for l in range(self.num_layers):
 
-            # layers.append(
-            #     ComplexLinear(self.num_filters[l], self.num_filters[l + 1], 
-            #     layer_ind=l, initializer=self.initializer,
-            #     bias_initializer=self.bias_initializer, device=self.device))
+            layers.append(
+                ComplexLinear(self.num_filters[l], self.num_filters[l + 1], 
+                layer_ind=l, initializer=self.initializer,
+                bias_initializer=self.bias_initializer, device=self.device))
 
             layers.append(
-                Hadamard(self.dims[1:], initializer=self.hadamard_initializer,
-                layer_ind=l, device=self.device))
+                Hadamard(
+                    self.hadamar_dimension(self.num_filters[l + 1]),
+                    initializer=self.hadamard_initializer,
+                    layer_ind=l, device=self.device))
 
-            # if self.preserved_dim is not None:
-            #     layers.append(
-            #         GenericLinear(
-            #             self.num_dims, self.preserved_dim, self.preserved_size,
-            #             self.preserved_size, layer_ind=l, initializer=self.initializer,
-            #             bias_initializer=self.bias_initializer,
-            #             device=self.device))
+            if self.is_preserving:
+                layers.append(
+                    GenericLinear(
+                        self.num_dims, self.preserved_dim, self.preserved_size,
+                        self.preserved_size, layer_ind=l,
+                        initializer=self.initializer,
+                        bias_initializer=self.bias_initializer,
+                        device=self.device))
 
             layers.append(self.non_linearity())
+            layers.append(ComplexBatchNorm(
+                self.num_dims, self.batch_norm_dims(l + 1),
+                self.batch_dim_index))
 
         return layers
 
+
+    def hadamar_dimension(self, num_filters, preserving=False):
+        if self.is_preserving:
+            return (*self.dims[1: -1], num_filters)
+        return (self.dims[1], self.dims[2], num_filters)
+    
+    def batch_norm_dims(self, l):
+        if self.is_preserving:
+            return 3
+        return self.num_filters[l]
+
+
+    def num_output_features(self):
+        return np.prod(self.dims[1 :-1]) * self.num_filters[-1]
+
+
+class ComplexClassificationHead(torch.nn.Module):
+
+    def __init__(self, in_features, num_classes, device=CUDA_DEVICE):
+        
+        super().__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.device = device
+
+        self.layers = [
+            torch.nn.Flatten(),
+            ComplexLinear(in_features, num_classes, device=device), # standard linear func
+            Absolute()]
+        
+        self.sequential = torch.nn.Sequential(*self.layers)
+
+    def forward(self, x):
+        return self.sequential(x)
 
 
 # class ConvFilteringBlock(torch.nn.Module):
