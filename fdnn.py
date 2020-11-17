@@ -25,22 +25,29 @@ class ComplexLinear(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.w = torch.nn.Parameter(
+        self.Wr, self.Wi = torch.nn.Parameter(
             initializer((out_features, in_features), device))
-        self.register_parameter('w{}'.format(layer_ind), self.w)
-        # self.requires_grad_(self.w)
+        self.register_parameter('Wr{}'.format(layer_ind), self.Wr)
+        self.register_parameter('Wi{}'.format(layer_ind), self.Wi)
 
-        self.bias = None
+        self.Br = None
+        self.Bi = None
+
         if bias_initializer is not None:
-            self.bias = bias_initializer()
-            self.register_parameter('b{}'.format(layer_ind), self.bias)
-            # self.requires_grad_(self.bias)
+            self.Br, self.Bi = bias_initializer()
+            self.register_parameter('Br{}'.format(layer_ind), self.Br)
+            self.register_parameter('Bi{}'.format(layer_ind), self.Bi)
 
 
     # @staticmethod
     def forward(self, x):
-        # return torch.nn.functional.linear(x, self.w, self.bias)
-        return self.w @ x
+        real_ind = int(x.shape[0] / 2)
+        rr = torch.nn.functional.linear(x[:real_ind], self.Wr)
+        ri = torch.nn.functional.linear(x[:real_ind], self.Wi)
+        ir = torch.nn.functional.linear(x[real_ind:], self.Wr)
+        ii = torch.nn.functional.linear(x[real_ind:], self.Wi)
+
+        return torch.cat((rr - ii + self.Br, ir + ri + self.Bi))
 
 
 class GenericLinear(ComplexLinear):

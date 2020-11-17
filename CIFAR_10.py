@@ -33,16 +33,9 @@ loader_train = DataLoader(cifar10_train, batch_size=64,
 
 
 def initializer(x, d):
-
     A = 0.01 * torch.randn(x, device=d)
     B = 0.01 * torch.randn(x, device=d)
-    W = torch.zeros(2 * x[0], 2 * x[1])
-    W[: x[0], :x[1]] = A
-    W[: x[0], x[1]:] = -B
-    W[x[0]: , x[1]:] = B
-    W[x[0]: , x[1]:] = A
-    print(W.shape, "shape")
-    return W
+    return (A, B)
 
 def hadamard_initializer(x, d):
     return (0.01 * torch.randn(x, device=d), 0.01 * torch.randn(x, device=d))
