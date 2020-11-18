@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-NUM_TRAIN = 6400
+NUM_TRAIN = 640
 NUM_VAL = 128
 BATCH_SIZE = 128
 
@@ -16,6 +16,15 @@ import fdnn
 import matplotlib.pyplot as plt
 import gradflow
 
+
+import sys
+
+CIFAR10_PATH = '/home/revz/Development/neural_nets/assignment2/cs682/datasets'
+if len(sys.argv) > 1:
+    CIFAR10_PATH = sys.argv[1]
+
+
+
 device = torch.device("cuda:0")
 dtype = torch.cfloat
 
@@ -28,11 +37,11 @@ transform = T.Compose([
 
 # Create random input and output data
 cifar10_train = torchvision.datasets.CIFAR10(
-    '/home/revz/Development/neural_nets/assignment2/cs682/datasets',
+    CIFAR10_PATH,
     train=True, download=True, transform=transform)
 
 cifar10_validation = torchvision.datasets.CIFAR10(
-    '/home/revz/Development/neural_nets/assignment2/cs682/datasets',
+    CIFAR10_PATH,
     train=False, download=True, transform=transform)
 
 loader_train = DataLoader(cifar10_train, batch_size=BATCH_SIZE, 
@@ -61,14 +70,14 @@ loader_val = DataLoader(cifar10_validation, batch_size=BATCH_SIZE,
 
 
 dims = (N, H, W, C, 1)
-p_num_filters = (1, 4, 5, 6)
-m_num_filters = (4, 5, 6)
+p_num_filters = (1, 10, 5, 6)
+m_num_filters = (10, 5, 6)
 preserved_dim = 3
 initializer = fdnn.random_complex_weight_initializer
 hadamard_initializer = fdnn.random_hadamard_filter_initializer
 bias_initializer = fdnn.naive_bias_initializer
 
-dropout = None
+dropout = 0.25
 model = fdnn.FrequencyDomainNeuralNet(
     dims, p_num_filters, m_num_filters, K, preserved_dim=3,
     p_initializer=initializer, p_hadamard_initializer=hadamard_initializer,
@@ -78,9 +87,9 @@ model = fdnn.FrequencyDomainNeuralNet(
     device=device, dropout=dropout)
 
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9,0.99))
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.9,0.99))
 
-num_epochs = 20
+num_epochs = 50
 losses = list()
 accuracy = list()
 epochs = list()
