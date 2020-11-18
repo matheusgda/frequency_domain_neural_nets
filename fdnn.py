@@ -269,7 +269,11 @@ class FrequencyFilteringBlock(torch.nn.Module):
                         bias_initializer=self.bias_initializer,
                         device=self.device))
 
-            layers.append(self.non_linearity())
+            # layers.append(self.non_linearity())
+            layers.append(
+                ModReLU(self.hadamar_dimension(self.num_filters[l + 1]),
+                layer_ind=l))
+
             layers.append(ComplexBatchNorm(
                 self.num_dims, self.batch_norm_dims(l + 1),
                 self.batch_dim_index))
@@ -352,7 +356,7 @@ class ModReLU(torch.nn.Module):
         self.dims = dims
         self.abs = Absolute()
 
-        bias = bias_initializer(dims, device=device)
+        bias, _ = bias_initializer(dims, device=device)
         self.bias = torch.nn.Parameter(bias)
         self.register_parameter('rb{}'.format(layer_ind), self.bias)
 
@@ -360,7 +364,7 @@ class ModReLU(torch.nn.Module):
     def forward(self, x):
         mod = 1 / self.abs(x)
         mask = (1 + (self.bias * mod)) > 0
-        return mask.view((1, 1, *x.size())) * x
+        return mask * x
 
 
 class FrequencyDomainNeuralNet(torch.nn.Module):
