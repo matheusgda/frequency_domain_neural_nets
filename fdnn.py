@@ -325,6 +325,28 @@ class FourierPreprocess(torch.nn.Module):
         return x
 
 
+
+class ModReLU(torch.nn.Module):
+
+    def __init__(
+        self, dims, bias_initializer=naive_bias_initializer, layer_ind=0,
+        device=device):
+
+        super().__init__()
+        self.dims = dims
+        self.abs = Absolute()
+
+        bias = bias_initializer(dims, device=device)
+        self.bias = torch.nn.Parameter(bias)
+        self.register_parameter('rb{}'.format(layer_ind), self.bias)
+
+
+    def forward(self, x):
+        mod = self.abs(x)
+        mask = (1 + (self.bias / mod)) > 0
+        return torch.cat((mask, mask)) * x
+
+
 class FrequencyDomainNeuralNet(torch.nn.Module):
 
     def __init__(self, pdims, p_num_filters, m_num_filters, num_classes,
