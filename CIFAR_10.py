@@ -89,7 +89,7 @@ model = fdnn.FrequencyDomainNeuralNet(
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.9,0.99))
 
-num_epochs = 50
+num_epochs = 1
 losses = list()
 accuracy = list()
 epochs = list()
@@ -102,6 +102,7 @@ for e in range(num_epochs):
 
         # preprocess x with fftn and needed reshaping
         x = x.to(device=device, dtype=dtype)
+        print(x.shape)
         x = fft.fftn(x, dim=(-1, -2))
         x = x.permute((0,2,3,1))
         x = x.view((*x.shape, 1))

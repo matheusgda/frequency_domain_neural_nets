@@ -8,8 +8,9 @@ fundamental building blocks for this architecture are:
     - The prime frequency dropin mechanism.
 """
 
-import torch
 import numpy as np
+import torch
+import torch.fft as fft
 
 CUDA_DEVICE = torch.device("cuda:0")
 # CUDA_DEVICE = torch.device('cpu')
@@ -301,6 +302,24 @@ class ComplexClassificationHead(torch.nn.Module):
 
     def forward(self, x):
         return self.sequential(x)
+    
+
+class FourierPreprocess(torch.nn.Module):
+
+
+    def __init__(self, perm=(0,2, 3, 1), fourier_dim=(1, 2), append_dim=1):
+        self.p = perm
+        self.fdim = fourier_dim
+        self.append = append_dim
+
+
+    def forward(self, x):
+        with torch.no_grad():
+            x = x.permute(self.p)
+            x = fft.fftn(x, dim=self.fdim)
+            x = x.view((*x.shape, self.append))
+            x = torch.cat((x.real, x.imag))
+        return x
 
 
 class FrequencyDomainNeuralNet(torch.nn.Module):
@@ -314,7 +333,7 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
         p_bias_initializer=naive_bias_initializer,
         m_bias_initializer=naive_bias_initializer,
         collapse_initializer=random_complex_weight_initializer,
-        dropout=None,
+        dropout=None, 
         device=CUDA_DEVICE):
 
         super().__init__()
@@ -357,7 +376,6 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
 
 
     def forward(self, x):
-        # rind = int(x.shape[0] / 2)
         y0 = self.preserving_block(x)
         y1 = self.collapse(y0).view((x.shape[0], *self.mdims[1:]))
         return self.head(self.mixing_block(y1))
