@@ -22,7 +22,23 @@ def random_complex_weight_initializer(dims, alpha=0.01, device=CUDA_DEVICE):
     return (A, B)
 
 
-def random_hadamard_filter_initializer(dims, alpha=1, device=CUDA_DEVICE):
+def random_hadamard_filter_initializer(
+    dims, alpha=1, size=None, offset=0, device=CUDA_DEVICE):
+
+    if size is not None:
+        f = torch.zeros(dims, device=device)
+        f[offset : offset + size, offset : offset + size] = alpha * torch.randn(
+            *dims[2:], device=device)
+
+        y = fft.fftn(f, dim=(0, 1))
+        freal = y.real
+        fimag = y.imag
+
+        freal.requires_grad_(True)
+        fimag.requires_grad_(True)
+
+        return (freal, fimag)
+
     return (
         alpha * torch.randn(dims, device=device, requires_grad=True),
         alpha * torch.randn(dims, device=device, requires_grad=True))
@@ -37,10 +53,12 @@ class ComplexBatchNorm(torch.nn.Module):
 
 
     def __init__(self, num_dims, batch_dim, batch_dim_ind, device=CUDA_DEVICE):
+
         super().__init__()
-        permutation = list(range(num_dims))
-        permutation[1] = batch_dim_ind
-        permutation[batch_dim_ind] = 1
+        self.num_dims = num_dims + 1
+        permutation = list(range(self.num_dims))
+        permutation[2] = batch_dim_ind + 1
+        permutation[batch_dim_ind + 1] = 2
         self.permutation = tuple(permutation)
 
         if num_dims == 5:
@@ -51,10 +69,9 @@ class ComplexBatchNorm(torch.nn.Module):
 
 
     def forward(self, x):
-        rind = int(x.shape[0] / 2)
         y = x.permute(self.permutation)
-        return torch.cat((
-            self.batchnorm(y[:rind]), self.batchnorm(y[rind:]))).permute(
+        return torch.stack((
+            self.batchnorm(y[0]), self.batchnorm(y[1]))).permute(
                 self.permutation)
 
 
@@ -87,13 +104,12 @@ class ComplexLinear(torch.nn.Module):
 
     # @staticmethod
     def forward(self, x):
-        rind = int(x.shape[0] / 2)
-        rr = torch.nn.functional.linear(x[:rind], self.Wr)
-        ri = torch.nn.functional.linear(x[:rind], self.Wi)
-        ir = torch.nn.functional.linear(x[rind:], self.Wr)
-        ii = torch.nn.functional.linear(x[rind:], self.Wi)
+        rr = torch.nn.functional.linear(x[0], self.Wr)
+        ri = torch.nn.functional.linear(x[0], self.Wi)
+        ir = torch.nn.functional.linear(x[1], self.Wr)
+        ii = torch.nn.functional.linear(x[1], self.Wi)
 
-        return torch.cat((rr - ii + self.Br, ir + ri + self.Bi))
+        return torch.stack((rr - ii + self.Br, ir + ri + self.Bi))
 
 
 class GenericLinear(ComplexLinear):
@@ -109,14 +125,14 @@ class GenericLinear(ComplexLinear):
             initializer=initializer, bias_initializer=bias_initializer,
             device=device)
 
-        self.num_dims = num_dims
-        self.mixed_dim = mixed_dim
+        self.num_dims = num_dims + 1
+        self.mixed_dim = mixed_dim + 1
         self.in_features = in_features
         self.out_features = out_features
 
-        permutation = list(range(num_dims))
-        permutation[mixed_dim] = num_dims - 1
-        permutation[-1] = mixed_dim
+        permutation = list(range(self.num_dims))
+        permutation[self.mixed_dim] = self.num_dims - 1
+        permutation[-1] = self.mixed_dim
         self.permutation = tuple(permutation)
 
 
@@ -169,10 +185,9 @@ class Hadamard(torch.nn.Module):
 
 
     def picewise_prod(self, x):
-        rind = int(x.shape[0] / 2)
-        return torch.cat((
-            self.freal * x[:rind] - self.fimag * x[rind:],
-            self.fimag * x[rind:] + self.freal * x[:rind]))
+        return torch.stack((
+            self.freal * x[0] - self.fimag * x[1],
+            self.fimag * x[1] + self.freal * x[0]))
 
 
     def masked_picewise_prod(self, x):
@@ -188,8 +203,8 @@ class Absolute(torch.nn.Module):
 
     # @staticmethod
     def forward(self, x):
-        rind = int(x.shape[0] / 2)
-        return (x[:rind] * x[:rind] + x[rind:] * x[rind:]).sqrt()
+        return x.square().sum(0).sqrt()
+
 
 
 class FrequencyFilteringBlock(torch.nn.Module):
@@ -295,20 +310,21 @@ class ComplexClassificationHead(torch.nn.Module):
         self.device = device
 
         self.layers = [
-            torch.nn.Flatten(),
+            torch.nn.Flatten(start_dim=2),
             ComplexLinear(in_features, num_classes, device=device), # standard linear func
             Absolute()]
         
         self.sequential = torch.nn.Sequential(*self.layers)
 
     def forward(self, x):
+        
         return self.sequential(x)
     
 
 class FourierPreprocess(torch.nn.Module):
 
 
-    def __init__(self, perm=(0,2, 3, 1), fourier_dim=(1, 2), append_dim=1):
+    def __init__(self, perm=(0, 2, 3, 1), fourier_dim=(1, 2), append_dim=1):
 
         super().__init__()
         self.p = perm
@@ -321,7 +337,7 @@ class FourierPreprocess(torch.nn.Module):
             x = x.permute(self.p)
             x = fft.fftn(x, dim=self.fdim)
             x = x.view((*x.shape, self.append))
-            x = torch.cat((x.real, x.imag))
+            x = torch.stack((x.real, x.imag))
         return x
 
 
@@ -330,7 +346,7 @@ class ModReLU(torch.nn.Module):
 
     def __init__(
         self, dims, bias_initializer=naive_bias_initializer, layer_ind=0,
-        device=device):
+        device=CUDA_DEVICE):
 
         super().__init__()
         self.dims = dims
@@ -342,9 +358,9 @@ class ModReLU(torch.nn.Module):
 
 
     def forward(self, x):
-        mod = self.abs(x)
-        mask = (1 + (self.bias / mod)) > 0
-        return torch.cat((mask, mask)) * x
+        mod = 1 / self.abs(x)
+        mask = (1 + (self.bias * mod)) > 0
+        return mask.view((1, 1, *x.size())) * x
 
 
 class FrequencyDomainNeuralNet(torch.nn.Module):
@@ -402,5 +418,5 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
 
     def forward(self, x):
         y0 = self.preserving_block(x)
-        y1 = self.collapse(y0).view((x.shape[0], *self.mdims[1:]))
+        y1 = self.collapse(y0).view((x.shape[0], x.shape[1], *self.mdims[1:]))
         return self.head(self.mixing_block(y1))
