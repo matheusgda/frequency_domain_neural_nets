@@ -46,4 +46,4 @@ def trainer(preprocess,
         accuracy_list.append(acc / num_samples)
 
 
-    return model, loss_list, acc_list
+    return model, loss_list, accuracy_list
