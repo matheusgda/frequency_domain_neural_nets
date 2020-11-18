@@ -40,15 +40,15 @@ cifar10_test = torchvision.datasets.CIFAR10(
     CIFAR10_PATH,
     train=False, download=True, transform=transform)
 
-train_loader = DataLoader(cifar10_train, batch_size=BATCH_SIZE, 
+train_loader = DataLoader(cifar10_train, batch_size=BATCH_SIZE, pin_memory=True,
                           sampler=sampler.SubsetRandomSampler(range(NUM_TRAIN)))
 
 val_loader = DataLoader(
-    cifar10_train, batch_size=BATCH_SIZE,
+    cifar10_train, batch_size=BATCH_SIZE, pin_memory=True,
     sampler=sampler.SubsetRandomSampler(range(NUM_TRAIN, NUM_TRAIN + NUM_VAL)))
 
 test_loader = DataLoader(
-    cifar10_test, batch_size=BATCH_SIZE,
+    cifar10_test, batch_size=BATCH_SIZE, pin_memory=True,
     sampler=sampler.SubsetRandomSampler(range(NUM_TEST)))
 
 device = torch.device("cuda:0")
@@ -78,7 +78,7 @@ criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(
     model.parameters(), lr=1e-4, betas=(0.9,0.99), weight_decay=0)
 
-num_epochs = 10
+num_epochs = 2
 
 loss, accuracy = utils.trainer(
     preprocess,
@@ -91,15 +91,19 @@ torch.save(model.state_dict(), model_name)
 
 plt.plot(range(len(loss)), loss)
 plt.ylabel("Loss")
-plt.xlabel("Epoch")
-plt.savefig("prototype.png")
+plt.xlabel("Step")
+plt.savefig("{}_loss.png".format(model_name))
+plt.grid(True)
+plt.title("Training Loss")
 plt.show()
 plt.clf()
 
 plt.plot(range(len(accuracy)), accuracy)
 plt.ylabel("Accuracy")
 plt.xlabel("Epoch")
-plt.savefig("accuracy.png")
+plt.grid(True)
+plt.title("Validation Accuracy")
+plt.savefig("{}_accuracy.png".format(model_name))
 plt.show()
 
 print("Accuracy on test set: {}.".format(test_accuracy))
