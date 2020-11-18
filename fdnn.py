@@ -16,16 +16,16 @@ CUDA_DEVICE = torch.device("cuda:0")
 # CUDA_DEVICE = torch.device('cpu')
 
 
-def random_complex_weight_initializer(dims, device=CUDA_DEVICE):
-    A = 0.01 * torch.randn(dims, device=device, requires_grad=True)
-    B = 0.01 * torch.randn(dims, device=device, requires_grad=True)
+def random_complex_weight_initializer(dims, alpha=0.01, device=CUDA_DEVICE):
+    A = alpha * torch.randn(dims, device=device, requires_grad=True)
+    B = alpha * torch.randn(dims, device=device, requires_grad=True)
     return (A, B)
 
 
-def random_hadamard_filter_initializer(dims, device=CUDA_DEVICE):
+def random_hadamard_filter_initializer(dims, alpha=1, device=CUDA_DEVICE):
     return (
-        1 * torch.randn(dims, device=device, requires_grad=True),
-        1 * torch.randn(dims, device=device, requires_grad=True))
+        alpha * torch.randn(dims, device=device, requires_grad=True),
+        alpha * torch.randn(dims, device=device, requires_grad=True))
 
 
 def naive_bias_initializer(dims, device=CUDA_DEVICE):
@@ -71,13 +71,13 @@ class ComplexLinear(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        Wr, Wi = initializer((out_features, in_features), device)
+        Wr, Wi = initializer((out_features, in_features), device=device)
         self.Wr = torch.nn.Parameter(Wr)
         self.Wi = torch.nn.Parameter(Wi)
         self.register_parameter('Wr{}'.format(layer_ind), self.Wr)
         self.register_parameter('Wi{}'.format(layer_ind), self.Wi)
 
-        Br, Bi = bias_initializer(out_features, device)
+        Br, Bi = bias_initializer(out_features, device=device)
         self.Br = torch.nn.Parameter(Br)
         self.Bi = torch.nn.Parameter(Bi)
         if bias_initializer is not None:
@@ -149,7 +149,7 @@ class Hadamard(torch.nn.Module):
         self.device = device
         self.layer_ind = layer_ind
 
-        freal, fimag = initializer(dims, self.device)
+        freal, fimag = initializer(dims, device=self.device)
         self.freal = torch.nn.Parameter(freal)
         self.fimag = torch.nn.Parameter(fimag)
         self.register_parameter('freal{}'.format(layer_ind), self.freal)
@@ -269,7 +269,8 @@ class FrequencyFilteringBlock(torch.nn.Module):
         if self.is_preserving:
             return (*self.dims[1: -1], num_filters)
         return (self.dims[1], self.dims[2], num_filters)
-    
+
+
     def batch_norm_dims(self, l):
         if self.is_preserving:
             return 3
@@ -308,6 +309,8 @@ class FourierPreprocess(torch.nn.Module):
 
 
     def __init__(self, perm=(0,2, 3, 1), fourier_dim=(1, 2), append_dim=1):
+
+        super().__init__()
         self.p = perm
         self.fdim = fourier_dim
         self.append = append_dim
