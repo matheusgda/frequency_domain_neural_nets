@@ -18,6 +18,8 @@ NUM_VAL = 128
 BATCH_SIZE = 128
 NUM_TEST = 128
 
+model_name = "FDNN_CIFAR10.model"
+
 CIFAR10_PATH = '/home/revz/Development/neural_nets/assignment2/cs682/datasets'
 if len(sys.argv) > 1:
     CIFAR10_PATH = sys.argv[1]
@@ -85,7 +87,7 @@ loss, accuracy = utils.trainer(
 
 test_accuracy = utils.evaluate(preprocess, model, test_loader, NUM_TEST, device)
 
-# torch.save(model.state_dict(), "FDNN_CIFAR10_1M_Overffited_RELU.model")
+torch.save(model.state_dict(), model_name)
 
 plt.plot(range(len(loss)), loss)
 plt.ylabel("Loss")
