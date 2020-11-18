@@ -139,7 +139,7 @@ class Hadamard(torch.nn.Module):
 
     def __init__(
         self, dims, layer_ind=0, initializer=random_complex_weight_initializer,
-        mask_initializer=torch.ones,
+        mask_initializer=None,
         device=CUDA_DEVICE):
 
         super().__init__()
@@ -147,7 +147,6 @@ class Hadamard(torch.nn.Module):
         self.initializer = initializer
         self.device = device
         self.layer_ind = layer_ind
-        print(self.dims)
 
         freal, fimag = initializer(dims, self.device)
         self.freal = torch.nn.Parameter(freal)
@@ -155,15 +154,28 @@ class Hadamard(torch.nn.Module):
         self.register_parameter('freal{}'.format(layer_ind), self.freal)
         self.register_parameter('fimag{}'.format(layer_ind), self.fimag)
 
-        self.mask = torch.ones(dims, dtype=torch.cfloat, device=device) 
+        # apply mask only if necessary
+        if mask_initializer is not None:
+            self.mask = mask_initializer(dims, device=device)
+            self.ff = self.masked_picewise_prod
+        else:
+            self.ff = self.picewise_prod
 
 
     # @staticmethod
     def forward(self, x):
+        return self.ff(x)
+
+
+    def picewise_prod(self, x):
         rind = int(x.shape[0] / 2)
         return torch.cat((
             self.freal * x[:rind] - self.fimag * x[rind:],
             self.fimag * x[rind:] + self.freal * x[:rind]))
+
+
+    def masked_picewise_prod(self, x):
+        return self.mask * self.picewise_prod(x)
 
 
 class Absolute(torch.nn.Module):
@@ -187,7 +199,8 @@ class FrequencyFilteringBlock(torch.nn.Module):
         preserved_dim=None, initializer=random_complex_weight_initializer, 
         hadamard_initializer=random_hadamard_filter_initializer,
         bias_initializer=naive_bias_initializer,
-        device=CUDA_DEVICE):
+        device=CUDA_DEVICE,
+        dropout=None):
 
         super().__init__()
         self.dims = dims
@@ -205,6 +218,7 @@ class FrequencyFilteringBlock(torch.nn.Module):
             self.preserved_size = dims[preserved_dim]
         self.batch_dim_index = 3 # TODO: clarify why
 
+        self.dropout = dropout
         self.non_linearity = non_lin
         self.layers = self.compile_layers()
         self.sequential = torch.nn.Sequential(*self.layers)
@@ -243,6 +257,9 @@ class FrequencyFilteringBlock(torch.nn.Module):
             layers.append(ComplexBatchNorm(
                 self.num_dims, self.batch_norm_dims(l + 1),
                 self.batch_dim_index))
+
+            if self.dropout is not None:
+                layers.append(torch.nn.Dropout(self.dropout))
 
         return layers
 
@@ -297,6 +314,7 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
         p_bias_initializer=naive_bias_initializer,
         m_bias_initializer=naive_bias_initializer,
         collapse_initializer=random_complex_weight_initializer,
+        dropout=None,
         device=CUDA_DEVICE):
 
         super().__init__()
@@ -308,7 +326,7 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
                     initializer=p_initializer, 
                     hadamard_initializer=p_hadamard_initializer,
                     bias_initializer=p_bias_initializer,
-                    device=device)
+                    device=device, dropout=dropout)
 
         self.mdims = (*pdims[:-2], p_num_filters[-1])
         self.device = device
@@ -322,7 +340,7 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
                         bias_initializer=p_bias_initializer,
                         device=device)
 
-        self.collapse_view_dims = (2 * self.mdims[0], *self.mdims[1:])
+        # self.collapse_view_dims = self.mdims[1:]
 
         self.mixing_block = FrequencyFilteringBlock(
                     self.mdims, 
@@ -332,114 +350,14 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
                     initializer=m_initializer, 
                     hadamard_initializer=m_hadamard_initializer,
                     bias_initializer=m_bias_initializer,
-                    device=device)
+                    device=device, dropout=dropout)
 
         self.head = ComplexClassificationHead(
             self.mixing_block.num_output_features(), num_classes, device=device)
 
 
     def forward(self, x):
+        # rind = int(x.shape[0] / 2)
         y0 = self.preserving_block(x)
-        y1 = self.collapse(y0).view(self.collapse_view_dims)
+        y1 = self.collapse(y0).view((x.shape[0], *self.mdims[1:]))
         return self.head(self.mixing_block(y1))
-
-
-# class ConvFilteringBlock(torch.nn.Module):
-
-    
-#     def __init__(self, num_layers, num_filters, dims):
-
-#         super(ConvFilteringBlock, self).__init__()
-#         self.num_layers = num_layers
-#         self.num_filters = num_filters
-#         self.dims = dims
-#         self.size = []
-
-#         self.filters = [
-#             torch.nn.Parameter(torch.rand(
-#                 (num_filters, num_filters, *dims),
-#                 device=device,
-#                 dtype=torch.cfloat)) for _ in range(num_layers)]
-#         for f in range(len(self.filters)):
-#             self.register_parameter("param_{}".format(f), self.filters[f])
-
-
-#     def forward(self, x):
-#         x_size = x.size()
-#         size = list()
-#         size.append(x_size[0])
-#         size.append(1)
-#         for i in range (1, len(x_size)):
-#             size.append(x_size[i])
-
-#         for i in range(self.num_layers):
-#             # print(x.view(tuple(size)).size(), self.filters[i].size())
-#             had = x.view(tuple(size)) * self.filters[i] # (N, C, H, W) * (F, C, H, W)
-#             conv = torch.sum(had, axis=1)
-#         return conv
-
-
-# # This class represents an NN module with all 3 major blocs from an 
-# #  FDNN.
-# #
-# class FDNN(torch.nn.Module):
-
-#     def __init__(
-#         self, input_dims, num_chp_layers, num_clayers, num_filters, num_classes):
-
-#         super(FDNN, self).__init__()
-#         self.input_dims = input_dims
-#         self.num_chp_layers = num_chp_layers
-#         self.num_clayers = num_clayers
-#         self.num_filters = num_filters
-#         self.num_classes = num_classes
-#         self.linearized_size = np.prod(input_dims[1:]) * num_filters
-
-#         self.conv_block = ConvFilteringBlock(
-#             self.num_clayers, num_filters, self.input_dims[1:])
-        
-#         # self.linear = torch.nn.Linear(
-#         #     self.linearized_size, self.num_classes, dt)
-#         self.w = torch.nn.Parameter(torch.rand(
-#             self.linearized_size,
-#             self.num_classes,
-#             dtype=torch.float,
-#             device=device))
-#         self.register_parameter('w', self.w)
-
-#     def forward(self, x):
-#         conv = self.conv_block.forward(x).abs()
-#         lin = conv.view((x.size()[0], self.linearized_size)) @ self.w 
-#         # return torch.abs(self.linear(conv.view(x.size()[0], self.linearized_size)))
-#         return lin
-
-
-# class MyReLU(torch.autograd.Function):
-#     """
-#     We can implement our own custom autograd Functions by subclassing
-#     torch.autograd.Function and implementing the forward and backward passes
-#     which operate on Tensors.
-#     """
-
-#     @staticmethod
-#     def forward(ctx, input):
-#         """
-#         In the forward pass we receive a Tensor containing the input and return
-#         a Tensor containing the output. ctx is a context object that can be used
-#         to stash information for backward computation. You can cache arbitrary
-#         objects for use in the backward pass using the ctx.save_for_backward method.
-#         """
-#         ctx.save_for_backward(input)
-#         return input.clamp(min=0)
-
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         """
-#         In the backward pass we receive a Tensor containing the gradient of the loss
-#         with respect to the output, and we need to compute the gradient of the loss
-#         with respect to the input.
-#         """
-#         input, = ctx.saved_tensors
-#         grad_input = grad_output.clone()
-#         grad_input[input < 0] = 0
-#         return grad_input

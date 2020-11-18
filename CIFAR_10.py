@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-NUM_TRAIN = 30000
-NUM_VAL = 200
+NUM_TRAIN = 6400
+NUM_VAL = 128
+BATCH_SIZE = 128
 
 import torch
 import torchvision
@@ -34,10 +35,10 @@ cifar10_validation = torchvision.datasets.CIFAR10(
     '/home/revz/Development/neural_nets/assignment2/cs682/datasets',
     train=False, download=True, transform=transform)
 
-loader_train = DataLoader(cifar10_train, batch_size=64, 
+loader_train = DataLoader(cifar10_train, batch_size=BATCH_SIZE, 
                           sampler=sampler.SubsetRandomSampler(range(NUM_TRAIN)))
 
-loader_val = DataLoader(cifar10_validation, batch_size=64, 
+loader_val = DataLoader(cifar10_validation, batch_size=BATCH_SIZE, 
                           sampler=sampler.SubsetRandomSampler(range(NUM_VAL)))
 
 
@@ -67,18 +68,19 @@ initializer = fdnn.random_complex_weight_initializer
 hadamard_initializer = fdnn.random_hadamard_filter_initializer
 bias_initializer = fdnn.naive_bias_initializer
 
+dropout = None
 model = fdnn.FrequencyDomainNeuralNet(
     dims, p_num_filters, m_num_filters, K, preserved_dim=3,
     p_initializer=initializer, p_hadamard_initializer=hadamard_initializer,
     p_bias_initializer=bias_initializer,
     m_initializer=initializer, m_hadamard_initializer=hadamard_initializer,
     m_bias_initializer=bias_initializer,
-    device=device)
+    device=device, dropout=dropout)
 
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9,0.99))
 
-num_epochs = 500
+num_epochs = 20
 losses = list()
 accuracy = list()
 epochs = list()
@@ -90,8 +92,11 @@ for e in range(num_epochs):
     for t, (x, y) in enumerate(loader_train):
 
         # preprocess x with fftn and needed reshaping
-        x = x.view(N, H, W, C, 1).to(device=device, dtype=dtype)
+        x = x.to(device=device, dtype=dtype)
         x = fft.fftn(x, dim=(-1, -2))
+        x = x.permute((0,2,3,1))
+        x = x.view((*x.shape, 1))
+        
         real_x = torch.cat((x.real, x.imag))
 
         y = y.to(device=device, dtype=torch.long)
@@ -112,24 +117,30 @@ for e in range(num_epochs):
         plot = False
         optimizer.step()
 
-    if e % 100 == 0:
+    if e % 1 == 0:
         print("Best loss {}.".format(best_loss))
         print("Epoch: {} / {}".format(e, num_epochs))
 
     losses.append(best_loss)
 
+    val = 0
+    samp = 0
     for t, (x, y) in enumerate(loader_val):
-        
+
         # preprocess x with fftn and needed reshaping
-        x = x.view(N, H, W, C, 1).to(device=device, dtype=dtype)
+        x = x.to(device=device, dtype=dtype)
         x = fft.fftn(x, dim=(-1, -2))
+        x = x.permute((0,2,3,1))
+        x = x.view((*x.shape, 1))
+
         real_x = torch.cat((x.real, x.imag))
         scores = model(real_x)
 
         y = y.to(device=device, dtype=torch.long)
 
-        val = (1.0 * (torch.argmax(scores, 1) == y)).mean()
-        accuracy.append(val.item())
+        val += (1.0 * (torch.argmax(scores, 1) == y)).sum().item()
+        samp += y.shape[0]
+    accuracy.append(val / samp)
         # print("Batch {0} accuracy: {1}".format(t, val.item()))
 
 torch.save(model.state_dict(), "FDNN_CIFAR10.model")
@@ -141,7 +152,7 @@ plt.savefig("prototype.png")
 plt.show()
 plt.clf()
 
-plt.plot(list(range(2 * num_epochs)), accuracy)
+plt.plot(list(range(num_epochs)), accuracy)
 plt.ylabel("Accuracy")
 plt.xlabel("Epoch")
 plt.savefig("accuracy.png")
