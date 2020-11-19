@@ -12,6 +12,7 @@ def trainer(preprocess,
     best_loss = initial_loss
     best_model = None
     best_acc = 0
+    non_imp = 0
 
     for e in range(num_epochs):
 
@@ -34,6 +35,9 @@ def trainer(preprocess,
                 (best_loss < l) * l
             loss_list.append(l)
 
+            if t % 10 == 0:
+                print("Batch {}".format(t))
+
         if e % show_every == 0:
             print("Epoch: {} / {}".format(e, num_epochs))
             print("Best loss {}.".format(best_loss))
@@ -45,10 +49,14 @@ def trainer(preprocess,
         if best_acc < acc:
             best_model = copy.deepcopy(model)
             best_acc = copy.deepcopy(acc)
+            non_imp = 0
 
+        non_imp += 1
+        if non_imp > 2:
+            return best_model, best_acc, loss_list, accuracy_list
+        print(best_acc)
 
     return best_model, best_acc, loss_list, accuracy_list
-
 
 def evaluate(preprocess, model, loader, num_samp, device, dtype=torch.cfloat):
 
