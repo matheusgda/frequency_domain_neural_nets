@@ -81,6 +81,11 @@ optimizer = torch.optim.Adam(
 
 num_epochs = 2
 
+best_model, best_acc, loss, accuracy = utils.trainer(
+                        preprocess,
+                        model, num_epochs, K, train_loader, val_loader, NUM_VAL,
+                        criterion, optimizer, device)
+
 test_accuracy = utils.evaluate(preprocess, model, test_loader, NUM_TEST, device)
 
 if save_info:
