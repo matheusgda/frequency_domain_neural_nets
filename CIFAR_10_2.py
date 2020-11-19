@@ -20,7 +20,7 @@ NUM_VAL = 1000
 BATCH_SIZE = 128
 NUM_TEST = 100
 
-model_name = "model1_attemp5/FDNN_CIFAR10_1.model"
+model_name = "model1_attemp6/FDNN_CIFAR10_1.model"
 save_info = True
 
 CIFAR10_PATH = '../'#'/home/revz/Development/neural_nets/assignment2/cs682/datasets'
@@ -84,7 +84,7 @@ criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(
     model.parameters(), lr=1e-5, betas=(0.5,0.99), weight_decay=0.1)
 
-num_epochs = 5
+num_epochs = 10
 
 best_model, best_acc, loss, accuracy = utils.trainer(
                         preprocess,
