@@ -19,6 +19,7 @@ BATCH_SIZE = 128
 NUM_TEST = 128
 
 model_name = "FDNN_CIFAR10.model"
+save_info = True
 
 CIFAR10_PATH = '/home/revz/Development/neural_nets/assignment2/cs682/datasets'
 if len(sys.argv) > 1:
@@ -87,7 +88,23 @@ loss, accuracy = utils.trainer(
 
 test_accuracy = utils.evaluate(preprocess, model, test_loader, NUM_TEST, device)
 
-torch.save(model.state_dict(), model_name)
+if save_info:
+
+    torch.save(model.state_dict(), model_name)
+    experiment_data = {
+        "val_accuracy": accuracy,
+        "train_loss": loss,
+        "test_acc": test_accuracy}
+
+    import pickle
+
+    try:
+        pickle_file = "{}_data.pck".format(model_name)
+        f = open(pickle_file, 'wb')
+        pickle.dump(experiment_data, f)
+        f.close()
+    except OSError: # could not save pickle file
+        print('Could not save pickle file! Data lost!')
 
 plt.plot(range(len(loss)), loss)
 plt.ylabel("Loss")
@@ -107,3 +124,4 @@ plt.savefig("{}_accuracy.png".format(model_name))
 plt.show()
 
 print("Accuracy on test set: {}.".format(test_accuracy))
+
