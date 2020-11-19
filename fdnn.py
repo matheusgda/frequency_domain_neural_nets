@@ -23,7 +23,7 @@ def random_complex_weight_initializer(dims, alpha=0.01, device=CUDA_DEVICE):
 
 
 def random_hadamard_filter_initializer(
-    dims, alpha=1, size=None, offset=0, device=CUDA_DEVICE):
+    dims, alpha=5, size=5, offset=0, device=CUDA_DEVICE):
 
     if size is not None:
         f = torch.zeros(dims, device=device)
@@ -309,20 +309,19 @@ class ComplexClassificationHead(torch.nn.Module):
     def __init__(self, in_features, num_classes, device=CUDA_DEVICE):
         
         super().__init__()
-        self.in_features = in_features
+        self.in_features = 2 * in_features
         self.num_classes = num_classes
         self.device = device
 
         self.layers = [
-            torch.nn.Flatten(start_dim=2),
-            ComplexLinear(in_features, num_classes, device=device), # standard linear func
-            Absolute()]
+            torch.nn.Flatten(start_dim=1),
+            torch.nn.Linear(self.in_features, num_classes).to(device)] # standard linear func
+            # Absolute()]
         
         self.sequential = torch.nn.Sequential(*self.layers)
 
     def forward(self, x):
-        
-        return self.sequential(x)
+        return self.sequential(x.transpose(1, 0))
     
 
 class FourierPreprocess(torch.nn.Module):
