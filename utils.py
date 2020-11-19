@@ -16,6 +16,7 @@ def trainer(preprocess,
 
     for e in range(num_epochs):
 
+        print("Epoch: {} / {}".format(e, num_epochs))
         for t, (x, target) in enumerate(train_loader):
 
             x = x.to(device=device, dtype=dtype)
@@ -29,34 +30,22 @@ def trainer(preprocess,
             loss.backward()
             optimizer.step()
 
-            l = loss.item()
+            with torch.no_grad():
+                l = loss.item()
+                best_loss = l * (best_loss > l) + \
+                    (best_loss < l) * l
+                loss_list.append(l)
 
-            best_loss = l * (best_loss > l) + \
-                (best_loss < l) * l
-            loss_list.append(l)
-
-            if t % 10 == 0:
+            if t % show_every == 0:
                 print("Batch {}".format(t))
+                print("Best loss {}.".format(best_loss))
 
-        if e % show_every == 0:
-            print("Epoch: {} / {}".format(e, num_epochs))
-            print("Best loss {}.".format(best_loss))
-
-        acc = evaluate(
-            preprocess, model, val_loader, num_val, device, dtype=dtype)
-        accuracy_list.append(acc)
-
-        if best_acc < acc:
-            best_model = copy.deepcopy(model)
-            best_acc = copy.deepcopy(acc)
-            non_imp = 0
-
-        non_imp += 1
-        if non_imp > 2:
-            return best_model, best_acc, loss_list, accuracy_list
-        print(best_acc)
-
+                acc = evaluate(
+                    preprocess, model, val_loader, num_val, device, dtype=dtype)
+                accuracy_list.append(acc)
+    print("Model best accuracy: {}.".format(best_acc))
     return best_model, best_acc, loss_list, accuracy_list
+
 
 def evaluate(preprocess, model, loader, num_samp, device, dtype=torch.cfloat):
 
