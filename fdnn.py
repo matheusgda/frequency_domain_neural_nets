@@ -424,3 +424,39 @@ class FrequencyDomainNeuralNet(torch.nn.Module):
         y0 = self.preserving_block(x)
         y1 = self.collapse(y0).view((x.shape[0], x.shape[1], *self.mdims[1:]))
         return self.head(self.mixing_block(y1))
+
+
+class FrequencyDomainReducedNet(torch.nn.Module):
+
+    def __init__(self, pdims, p_num_filters, m_num_filters, num_classes,
+        p_non_lin=torch.nn.Hardtanh, m_non_lin=torch.nn.Hardtanh,
+        preserved_dim=3, p_initializer=random_complex_weight_initializer,
+        m_initializer=random_complex_weight_initializer, 
+        p_hadamard_initializer=random_hadamard_filter_initializer,
+        m_hadamard_initializer=random_hadamard_filter_initializer,
+        p_bias_initializer=naive_bias_initializer,
+        m_bias_initializer=naive_bias_initializer,
+        collapse_initializer=random_complex_weight_initializer,
+        dropout=None, 
+        device=CUDA_DEVICE):
+
+        super().__init__()
+        self.num_dims = len(pdims)
+        self.device = device
+
+        self.preserving_block = FrequencyFilteringBlock(
+                    pdims, p_num_filters, non_lin=p_non_lin,
+                    preserved_dim=preserved_dim, 
+                    initializer=p_initializer, 
+                    hadamard_initializer=p_hadamard_initializer,
+                    bias_initializer=p_bias_initializer,
+                    device=device, dropout=dropout)
+
+
+        self.head = ComplexClassificationHead(
+            self.preserving_block.num_output_features(), num_classes, device=device)
+
+
+    def forward(self, x):
+        y0 = self.preserving_block(x)
+        return self.head(y0)

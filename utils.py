@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.autograd.profiler as profiler
+import copy
 
 def trainer(preprocess,
     model, num_epochs, initial_loss, train_loader, val_loader, num_val,
@@ -9,6 +10,8 @@ def trainer(preprocess,
     loss_list = list()
     accuracy_list = list()
     best_loss = initial_loss
+    best_model = None
+    best_acc = 0
 
     for e in range(num_epochs):
 
@@ -35,11 +38,16 @@ def trainer(preprocess,
             print("Epoch: {} / {}".format(e, num_epochs))
             print("Best loss {}.".format(best_loss))
 
-        accuracy_list.append(
-            evaluate(
-                preprocess, model, val_loader, num_val, device, dtype=dtype))
+        acc = evaluate(
+            preprocess, model, val_loader, num_val, device, dtype=dtype)
+        accuracy_list.append(acc)
 
-    return loss_list, accuracy_list
+        if best_acc < acc:
+            best_model = copy.deepcopy(model)
+            best_acc = copy.deepcopy(acc)
+
+
+    return best_model, best_acc, loss_list, accuracy_list
 
 
 def evaluate(preprocess, model, loader, num_samp, device, dtype=torch.cfloat):

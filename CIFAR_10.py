@@ -81,19 +81,16 @@ optimizer = torch.optim.Adam(
 
 num_epochs = 2
 
-loss, accuracy = utils.trainer(
-    preprocess,
-    model, num_epochs, K, train_loader, val_loader, NUM_VAL, 
-    criterion, optimizer, device)
-
 test_accuracy = utils.evaluate(preprocess, model, test_loader, NUM_TEST, device)
 
 if save_info:
 
-    torch.save(model.state_dict(), model_name)
+    torch.save(model.state_dict(), model_name + ".model")
+    torch.save(best_model.state_dict(), model_name + "_best.model")
     experiment_data = {
         "val_accuracy": accuracy,
         "train_loss": loss,
+        "best_val_acc": best_acc,
         "test_acc": test_accuracy}
 
     import pickle
@@ -122,6 +119,3 @@ plt.grid(True)
 plt.title("Validation Accuracy")
 plt.savefig("{}_accuracy.png".format(model_name))
 plt.show()
-
-print("Accuracy on test set: {}.".format(test_accuracy))
-
