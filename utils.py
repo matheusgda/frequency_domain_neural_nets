@@ -33,6 +33,7 @@ def trainer(preprocess,
             best_loss = l * (best_loss > l) + \
                 (best_loss < l) * l
             loss_list.append(l)
+            # print(t)
 
         if e % show_every == 0:
             print("Epoch: {} / {}".format(e, num_epochs))

@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torch.fft as fft
 
-CUDA_DEVICE = torch.device("cuda:0")
+CUDA_DEVICE = torch.device("cuda:1")
 # CUDA_DEVICE = torch.device('cpu')
 
 
@@ -23,7 +23,7 @@ def random_complex_weight_initializer(dims, alpha=0.01, device=CUDA_DEVICE):
 
 
 def random_hadamard_filter_initializer(
-    dims, alpha=1, size=None, offset=0, device=CUDA_DEVICE):
+    dims, alpha=1.5, size=None, offset=0, device=CUDA_DEVICE):
 
     if size is not None:
         f = torch.zeros(dims, device=device)
