@@ -327,7 +327,7 @@ class ComplexClassificationHead(torch.nn.Module):
 class FourierPreprocess(torch.nn.Module):
 
 
-    def __init__(self, perm=(0, 2, 3, 1), fourier_dim=(1, 2), append_dim=1):
+    def __init__(self, perm=(0, 2, 3, 1), fourier_dim=(1, 2, 3), append_dim=1):
 
         super().__init__()
         self.p = perm
