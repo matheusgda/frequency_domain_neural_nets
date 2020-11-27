@@ -344,6 +344,16 @@ class FourierPreprocess(torch.nn.Module):
         return x
 
 
+class FourierWeightVisualizer(torch.nn.Module):
+
+    def __init__(self, fourier_dim=(1, 2, 3)):
+        super().__init__()
+        self.fdim = fourier_dim
+    
+    def forward(self, x):
+        with torch.no_grad():
+            return fft.ifftn(x, dim=self.fdim)
+
 
 class ModReLU(torch.nn.Module):
 
