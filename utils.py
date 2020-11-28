@@ -1,7 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 import torch
 import torch.autograd.profiler as profiler
 import copy
+import fdnn
+
 
 def trainer(preprocess,
     model, num_epochs, initial_loss, train_loader, val_loader, num_val,
@@ -81,3 +85,18 @@ def profile(x, model, batch_size, device, func, sort_by="cuda_time_total"):
         with profiler.record_function(func):
             model(x)
     print(prof.key_averages().table(sort_by=sort_by, row_limit=10))
+
+
+def show_conv_weight(w, preprocess):
+    _, ax = plt.subplots(1, 2)
+    # for i, data in enumerate(List):
+    #     t = np.arange(data.shape[0])
+    #     ax[i].plot(t, data[:, 0])
+    #     ax[i].plot(t, data[:, 1])
+    #     ax[i].set_title(Models[i])
+    #     ax[i].legend((Titles[0], Titles[1]))
+
+    img = preprocess(w)
+    ax[0].imshow(img.real)
+    ax[1].imshow(img.imag)
+    plt.show()

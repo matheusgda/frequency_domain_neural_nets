@@ -346,13 +346,15 @@ class FourierPreprocess(torch.nn.Module):
 
 class FourierWeightVisualizer(torch.nn.Module):
 
-    def __init__(self, fourier_dim=(1, 2, 3)):
+    def __init__(self, fourier_dim=(1, 2, 3), dims=5):
         super().__init__()
         self.fdim = fourier_dim
-    
+        self.permutation = [dims - 1, * list(range(1, dims - 1))]
+
     def forward(self, x):
         with torch.no_grad():
-            return fft.ifftn(x, dim=self.fdim)
+            return fft.ifftn(
+                torch.view_as_complex(x.permute(self.permutation)), dim=self.fdim)
 
 
 class ModReLU(torch.nn.Module):
